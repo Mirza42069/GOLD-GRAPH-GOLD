@@ -11,12 +11,14 @@
 - Styling: Tailwind CSS v4 with shadcn and tw-animate.
 - Package manager: bun.
 - Alias: `@/` maps to repo root via `tsconfig.json`.
+- Gold price data: from MetalpriceAPI (requires API token in .env.local). Note: free plan is daily-delayed.
 
 ## Directory map
 - `app/` holds routes, `layout.tsx`, and global styles.
 - `components/` contains shared UI and example compositions.
+- `components/gold/` contains the Gold Graph app UI.
 - `components/ui/` contains shadcn primitives and patterns.
-- `lib/` contains utilities such as `cn`.
+- `lib/` contains utilities such as `cn` and gold API functions.
 - `public/` can host static assets if added later.
 
 ## Install
@@ -28,12 +30,13 @@
 - Build: `bun run build`
 - Start (requires build): `bun run start`
 - Lint: `bun run lint`
+- Typecheck (standalone): `bun x tsc -p tsconfig.json --noEmit`
 - One-off binary: `bun x <tool>`
 
 ## Tests
 - No test runner or `test` script is configured in `package.json`.
 - Single-test command: not available until a runner is added.
-- If you add tests, document the runner and single-test usage here.
+- If you add tests, also add `bun run test` and document single-test usage.
 
 ## Linting
 - ESLint is configured via `eslint.config.mjs`.
@@ -64,6 +67,7 @@
 - Pages use default exports; shared components use named exports.
 - Metadata lives in `app/layout.tsx` (use `Metadata` type).
 - Prefer functional components declared with `function`.
+- Next.js 16 dynamic APIs: `searchParams` may be a Promise; make pages `async` and `await` it before reading.
 
 ## Components and UI
 - UI primitives live in `components/ui` (shadcn style).
@@ -79,6 +83,19 @@
 - Prefer Tailwind utility classes over inline styles.
 - Use design tokens (e.g., `bg-background`, `text-foreground`).
 - Keep CSS variables in ASCII and in existing sections.
+- Respect `prefers-reduced-motion`; keep animations subtle.
+
+## App routing and query params
+- Gold Graph lives at `/`.
+- Query params:
+- `unit=oz|g` (omit for default ounce).
+- When changing query params in client components, use `next/navigation` router and push a full href.
+
+## Data model
+- Gold price + small recent history fetched from MetalpriceAPI on every page load.
+- `lib/gold.ts` contains `fetchGoldSeries()` which returns current price, recent daily series (max 5 days on free plan), and timestamp.
+- API token stored in `.env.local` as `METALPRICE_API_KEY`.
+- Uses Next.js data cache with tags; click the in-app Refresh button to revalidate.
 
 ## File and naming conventions
 - Files use kebab-case: `component-example.tsx`, `input-group.tsx`.
@@ -91,6 +108,7 @@
 - Wrap async client code with try/catch and show a user-safe message.
 - For server components, consider `error.tsx` boundaries when needed.
 - Avoid swallowing errors; log or surface in development.
+- Keep React hooks unconditional (ESLint `react-hooks` is enforced).
 
 ## Accessibility
 - Always pair inputs with `label`/`htmlFor` or `aria-label`.
@@ -98,52 +116,29 @@
 - Ensure focusable elements are reachable and keyboard friendly.
 
 ## Data fetching
-- Use server components for data loading by default.
-- Prefer async functions in `app/` over client-side fetches.
-- Keep fetch logic close to the page or a dedicated data module.
-
-## State management
-- Use local state (`useState`) for local UI controls.
-- Lift state only when needed; avoid premature global stores.
-
-## Assets
-- `app/favicon.ico` is the current favicon.
-- Remote images in examples use plain `img`; consider `next/image` for real content.
-
-## Fonts
-- Fonts are loaded via `next/font/google` in `app/layout.tsx`.
-- `Inter` and `Geist` variables are attached to `html`/`body`.
+- Prefer server components for data loading and heavy computation.
+- Keep client components focused on interaction (hover, input, router navigation).
 
 ## Cursor and Copilot rules
 - No `.cursor/rules`, `.cursorrules`, or `.github/copilot-instructions.md` found.
 - If such rules are added, mirror them here.
 
+## Performance (Vercel guidance)
+- Avoid waterfalls: run independent work in parallel; await late.
+- Keep client bundle small: avoid heavy deps; prefer server rendering.
+- Memoize expensive derived values in client components (`useMemo`) and keep effect deps minimal.
+- Animate wrappers (div) instead of SVG elements when possible.
+
 ## Agent guardrails
-- Do not delete or reformat large blocks without need.
+
 - Keep changes minimal and consistent with nearby code.
 - Do not add new tools or dependencies unless required.
-- When unsure, follow the closest existing pattern.
-
-## Suggested workflows
-- Start a task: check `package.json` scripts and relevant files.
-- After changes: run `bun run lint`.
-- Build before release: `bun run build`.
 
 ## Single-test placeholder
-- When a test runner is added, document:
-- `bun run test`
-- `bun run test -- <single test pattern>`
-- Update this section with the real command.
 
-## References
-- `package.json` for scripts and dependencies.
-- `eslint.config.mjs` for lint config.
-- `tsconfig.json` for TS options and alias.
-- `app/globals.css` for theme tokens and Tailwind setup.
+- Add `bun run test`.
+- Support single-test runs: `bun run test -- <pattern>`.
 
 ## Notes
-- This repo currently ships only a minimal example UI.
-- Keep examples readable and aligned with shadcn patterns.
-
-## End
-- Keep this file up to date as tooling changes.
+- Demo components exist in `components/`; prefer editing the real app in `components/gold/`.
+- `.env*` is gitignored; do not commit secrets.

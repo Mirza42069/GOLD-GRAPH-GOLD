@@ -2,35 +2,18 @@
 
 import * as React from "react"
 import { Input } from "@/components/ui/input"
-import type { GoldPoint, GoldUnit } from "@/lib/gold"
+import type { GoldUnit } from "@/lib/gold"
 
 type GoldCalculatorProps = {
-  latestPoint: GoldPoint
+  price: number
   unit: GoldUnit
   unitSuffix: string
 }
 
-const usdFormatter = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-  maximumFractionDigits: 2,
-})
-
-const monthFormatter = new Intl.DateTimeFormat("en-US", {
-  month: "long",
-  year: "numeric",
-})
-
-export function GoldCalculator({
-  latestPoint,
-  unit,
-  unitSuffix,
-}: GoldCalculatorProps) {
+export function GoldCalculator({ price, unit, unitSuffix }: GoldCalculatorProps) {
   const [usdValue, setUsdValue] = React.useState("1000")
   const [goldValue, setGoldValue] = React.useState("")
   const [activeField, setActiveField] = React.useState<"usd" | "gold">("usd")
-
-  const price = latestPoint.value
 
   React.useEffect(() => {
     const parsed = activeField === "usd" ? parseFloat(usdValue) : parseFloat(goldValue)
@@ -62,22 +45,20 @@ export function GoldCalculator({
   }
 
   return (
-    <div className="border-border/60 bg-muted/20 rounded-lg border p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-sm font-medium">Gold Calculator</p>
-          <p className="text-muted-foreground text-xs">
-            1 {unit} = {usdFormatter.format(price)} ({unitSuffix})
-          </p>
-          <p className="text-muted-foreground text-[11px]">
-            Latest snapshot {monthFormatter.format(new Date(latestPoint.date))}
-          </p>
-        </div>
+    <div className="space-y-3">
+      <div>
+        <p className="text-sm font-medium">Gold Calculator</p>
+        <p className="text-muted-foreground text-xs">
+          Convert USD to gold at current spot price ({unitSuffix})
+        </p>
       </div>
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-2">
         <div>
-          <label className="text-muted-foreground text-xs">USD</label>
+          <label htmlFor="usd-input" className="text-muted-foreground text-xs">
+            USD
+          </label>
           <Input
+            id="usd-input"
             value={usdValue}
             onChange={handleUsdChange}
             inputMode="decimal"
@@ -85,8 +66,11 @@ export function GoldCalculator({
           />
         </div>
         <div>
-          <label className="text-muted-foreground text-xs">Gold ({unit})</label>
+          <label htmlFor="gold-input" className="text-muted-foreground text-xs">
+            Gold ({unit})
+          </label>
           <Input
+            id="gold-input"
             value={goldValue}
             onChange={handleGoldChange}
             inputMode="decimal"

@@ -1,9 +1,10 @@
 import Link from "next/link"
-import { ArrowDownRightIcon, ArrowUpRightIcon } from "lucide-react"
+import { ArrowDownRightIcon, ArrowUpRightIcon, AlertCircleIcon } from "lucide-react"
 
-import { LineChart } from "@/components/gold/line-chart"
 import { GoldCalculator } from "@/components/gold/gold-calculator"
-import { RangeControls } from "@/components/gold/range-controls"
+import { CurrencyConverter } from "@/components/gold/currency-converter"
+import { PriceChart } from "@/components/gold/price-chart"
+import { RefreshDataButton } from "@/components/gold/refresh-data-button"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -17,44 +18,62 @@ import {
 import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
 import {
-  buildHref,
-  formatDate,
+  fetchGoldSeries,
+  fetchExchangeRate,
+  formatDateTime,
   formatPercent,
   formatUsd,
-  getGoldData,
   goldUnits,
-  resolveRange,
-  resolveUnit,
+  type GoldUnit,
+  type ExchangeRateData,
 } from "@/lib/gold"
 
 type GoldDashboardProps = {
-  range?: string | string[]
   unit?: string | string[]
 }
 
-type StatCardProps = {
-  label: string
-  value: string
+function resolveUnit(input?: string | string[]): GoldUnit {
+  const value = Array.isArray(input) ? input[0] : input
+  const match = goldUnits.find((u) => u.value === value)
+  return match?.value ?? "oz"
 }
 
-export async function GoldDashboard({ range, unit }: GoldDashboardProps) {
-  const rangeConfig = resolveRange(range)
+function buildHref(unit: GoldUnit) {
+  return unit === "oz" ? "/" : `/?unit=${unit}`
+}
+
+export async function GoldDashboard({ unit }: GoldDashboardProps) {
   const selectedUnit = resolveUnit(unit)
-  const rangeLabel = rangeConfig.label
-  const unitLabel =
-    goldUnits.find((option) => option.value === selectedUnit)?.suffix ?? "USD/oz"
+  const unitLabel = goldUnits.find((option) => option.value === selectedUnit)?.suffix ?? "USD/oz"
 
-  let data: Awaited<ReturnType<typeof getGoldData>> | null = null
-  let hasError = false
+  const [goldResult, fxResult] = await Promise.allSettled([
+    fetchGoldSeries(selectedUnit, 14),
+    fetchExchangeRate(),
+  ])
 
-  try {
-    data = await getGoldData(rangeConfig, selectedUnit)
-  } catch {
-    hasError = true
-  }
+  const series = goldResult.status === "fulfilled" ? goldResult.value : null
+  const error =
+    goldResult.status === "rejected"
+      ? goldResult.reason instanceof Error
+        ? goldResult.reason.message
+        : "Failed to fetch gold price"
+      : null
 
-  const sourceLabel = data?.sourceLabel ?? "Local snapshot"
-  const zoomLevel = rangeConfig.kind === "recent" ? "in" : "out"
+  const exchangeRate: ExchangeRateData | null =
+    fxResult.status === "fulfilled" ? fxResult.value : null
+  const exchangeRateError: string | null =
+    fxResult.status === "rejected"
+      ? fxResult.reason instanceof Error
+        ? fxResult.reason.message
+        : "Failed to fetch exchange rate"
+      : null
+
+  const data = series?.data ?? null
+  const chartPoints = series?.points ?? []
+  const chartDays = series?.days ?? 0
+
+  const isPositive = data ? data.changePercent24h >= 0 : false
+  const ChangeIcon = isPositive ? ArrowUpRightIcon : ArrowDownRightIcon
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-background text-foreground">
@@ -67,216 +86,163 @@ export async function GoldDashboard({ range, unit }: GoldDashboardProps) {
         <header className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
           <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="secondary">{sourceLabel}</Badge>
+              <Badge variant="secondary">MetalpriceAPI</Badge>
               <Badge variant="outline">{unitLabel}</Badge>
+              <Badge variant="outline" className="text-[10px]">
+                Cached
+              </Badge>
             </div>
             <div className="space-y-2">
               <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
                 Gold Graph
               </h1>
               <p className="text-muted-foreground text-sm sm:text-base">
-                Minimal gold benchmark view for investment context.
+                Gold price tracker for personal investment context.
               </p>
             </div>
           </div>
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="border-border/60 bg-muted/30 flex items-center gap-1 rounded-full border p-1">
-                {goldUnits.map((option) => (
-                  <Button
-                    key={option.value}
-                    asChild
-                    size="xs"
-                    variant={
-                      option.value === selectedUnit ? "secondary" : "outline"
-                    }
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="border-border/60 bg-muted/30 flex items-center gap-1 rounded-full border p-1">
+              {goldUnits.map((option) => (
+                <Button
+                  key={option.value}
+                  asChild
+                  size="xs"
+                  variant={option.value === selectedUnit ? "secondary" : "outline"}
+                >
+                  <Link
+                    href={buildHref(option.value)}
+                    aria-current={option.value === selectedUnit ? "page" : undefined}
                   >
-                    <Link
-                      href={buildHref(rangeConfig.key, option.value)}
-                      aria-current={
-                        option.value === selectedUnit ? "page" : undefined
-                      }
-                    >
-                      {option.shortLabel}
-                    </Link>
-                  </Button>
-                ))}
-              </div>
-              <Separator orientation="vertical" className="h-6" />
-              <RangeControls
-                range={rangeConfig}
-                unit={selectedUnit}
-                latestDate={data?.latest.date ?? ""}
-              />
+                    {option.shortLabel}
+                  </Link>
+                </Button>
+              ))}
             </div>
-          </header>
+            <RefreshDataButton />
+          </div>
+        </header>
 
-        {hasError || !data ? (
-          <Card className="animate-in fade-in slide-in-from-bottom-2">
+        {error ? (
+          <Card className="animate-in fade-in slide-in-from-bottom-2 border-destructive/50">
             <CardHeader>
-              <CardTitle>Unable to load gold data</CardTitle>
-              <CardDescription>
-                Local data could not be read. Please check the data file.
-              </CardDescription>
+              <div className="flex items-center gap-3">
+                <AlertCircleIcon className="size-5 text-destructive" />
+                <CardTitle>Unable to load gold price</CardTitle>
+              </div>
+              <CardDescription>{error}</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center">
               <Button asChild>
-                <Link href={buildHref(rangeConfig.key, selectedUnit)}>Retry</Link>
+                <Link href={buildHref(selectedUnit)}>Retry</Link>
               </Button>
               <span className="text-muted-foreground text-xs">
-                Edit data/gold-series.json and reload.
+                Check your connection or API token.
               </span>
             </CardContent>
           </Card>
-        ) : (
-          <section className="grid gap-6 lg:grid-cols-[3fr_1fr]">
-            <Card className="animate-in fade-in slide-in-from-bottom-2">
-              <CardHeader>
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="space-y-1">
-                    <CardTitle>Gold Price Trend</CardTitle>
-                    <CardDescription>
-                      {rangeLabel} range - {sourceLabel}
-                    </CardDescription>
-                  </div>
-                  <Badge variant="secondary" className="w-fit">
-                    Updated {formatDate(data.lastUpdated)}
-                  </Badge>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <LineChart
-                  points={data.rangePoints}
-                  id={`gold-${data.range.key}-${data.unit}`}
-                  ariaLabel={`Gold price trend in ${data.unitSuffix}`}
-                  unitSuffix={data.unitSuffix}
-                  className="w-full"
-                  zoom={zoomLevel}
-                />
-                <GoldCalculator
-                  latestPoint={data.latest}
-                  unit={data.unit}
-                  unitSuffix={data.unitSuffix}
-                />
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                  <StatCard
-                    label={`${rangeLabel} high`}
-                    value={formatUsd(data.rangeStats.high)}
-                  />
-                  <StatCard
-                    label={`${rangeLabel} low`}
-                    value={formatUsd(data.rangeStats.low)}
-                  />
-                  <StatCard
-                    label="52W high"
-                    value={formatUsd(data.yearStats.high)}
-                  />
-                  <StatCard
-                    label="52W low"
-                    value={formatUsd(data.yearStats.low)}
-                  />
-                </div>
-              </CardContent>
-              <CardFooter className="text-muted-foreground flex flex-wrap items-center justify-between gap-2 text-xs">
-                <span>Source: {data.sourceLabel}</span>
-                <span>{data.pointsCount} points</span>
-              </CardFooter>
-            </Card>
-
-              <Card
-                size="sm"
-                className="relative overflow-hidden animate-in fade-in slide-in-from-bottom-2 lg:max-w-sm lg:justify-self-end"
-              >
+        ) : data ? (
+          <section className="flex flex-col gap-6">
+            <div className="grid gap-6 lg:grid-cols-[360px_1fr]">
+              {/* Main Price Card */}
+              <Card className="relative overflow-hidden animate-in fade-in slide-in-from-bottom-2">
                 <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-transparent" />
-              <CardHeader>
+                <CardHeader>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div className="space-y-1">
-                      <CardTitle>Current Price</CardTitle>
-                      <CardDescription>Latest available snapshot</CardDescription>
+                      <CardTitle>Current Gold Price</CardTitle>
+                      <CardDescription>As of {formatDateTime(data.timestamp)}</CardDescription>
                     </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <div className="text-4xl font-semibold tracking-tight">
-                      {formatUsd(data.latest.value)}
-                    </div>
-                    <p className="text-muted-foreground text-sm">
-                      {data.unitSuffix}
-                    </p>
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "flex w-fit items-center gap-1.5 border",
+                        isPositive
+                          ? "border-emerald-400/40 text-emerald-400"
+                          : "border-destructive/40 text-destructive"
+                      )}
+                    >
+                      <ChangeIcon className="size-3.5" />
+                      <span className="font-medium">{formatPercent(data.changePercent24h)}</span>
+                      <span className="text-[11px] uppercase tracking-wide">1D</span>
+                    </Badge>
                   </div>
-                  <Separator />
-                  <div className="text-muted-foreground text-xs">
-                    Updated {formatDate(data.lastUpdated)}
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="flex flex-col gap-1">
+                    <div className="flex items-baseline gap-3">
+                      <span className="text-5xl font-semibold tracking-tight">
+                        {formatUsd(data.price)}
+                      </span>
+                      <span className="text-muted-foreground text-lg">{data.unitSuffix}</span>
+                    </div>
+                    <div
+                      className={cn(
+                        "flex items-center gap-1.5 text-sm",
+                        isPositive ? "text-emerald-400" : "text-destructive"
+                      )}
+                    >
+                      <ChangeIcon className="size-4" />
+                      <span>
+                        {isPositive ? "+" : ""}
+                        {formatUsd(data.change24h)} since prior close
+                      </span>
+                    </div>
                   </div>
                 </CardContent>
-              <CardFooter className="flex flex-wrap gap-2">
-                {buildChangeCards(data.changes).map((item) => (
-                  <Badge
-                    key={item.label}
-                    variant="outline"
-                    className={cn(
-                      "flex items-center gap-1.5 border bg-background/40",
-                      item.className
-                    )}
-                  >
-                    {item.icon}
-                    <span className="text-[11px] uppercase tracking-wide">
-                      {item.label}
-                    </span>
-                    <span className="font-medium">{item.value}</span>
-                  </Badge>
-                ))}
-              </CardFooter>
+                <CardFooter className="text-muted-foreground text-xs">
+                  Cached - click Refresh to update
+                </CardFooter>
+              </Card>
+
+              {/* Recent Price Chart */}
+              <Card className="animate-in fade-in slide-in-from-bottom-2 delay-75">
+                <CardHeader>
+                  <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="space-y-1">
+                      <CardTitle>Recent Trend</CardTitle>
+                      <CardDescription>Last {chartDays} calendar days</CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <PriceChart points={chartPoints} unitSuffix={data.unitSuffix} className="w-full" />
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Calculators */}
+            <Card className="animate-in fade-in slide-in-from-bottom-2 delay-150">
+              <CardHeader>
+                <CardTitle>Converters</CardTitle>
+                <CardDescription>Calculate gold and currency values</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <GoldCalculator price={data.price} unit={data.unit} unitSuffix={data.unitSuffix} />
+                {exchangeRate && (
+                  <>
+                    <Separator />
+                    <CurrencyConverter rate={exchangeRate.rate} timestamp={exchangeRate.timestamp} />
+                  </>
+                )}
+                {exchangeRateError && (
+                  <>
+                    <Separator />
+                    <div className="text-muted-foreground text-xs">
+                      USD/IDR rate unavailable: {exchangeRateError}
+                    </div>
+                  </>
+                )}
+              </CardContent>
             </Card>
           </section>
-        )}
+        ) : null}
 
         <footer className="text-muted-foreground flex flex-col gap-2 text-xs sm:flex-row sm:items-center sm:justify-between">
-          <span>Update data in data/gold-series.json to refresh the chart.</span>
+          <span>Data is cached; click Refresh to refetch.</span>
           <span>Not financial advice.</span>
         </footer>
       </div>
     </main>
   )
-}
-
-function StatCard({ label, value }: StatCardProps) {
-  return (
-    <div className="border-border/60 bg-muted/20 rounded-lg border p-3">
-      <p className="text-muted-foreground text-xs">{label}</p>
-      <p className="text-sm font-medium">{value}</p>
-    </div>
-  )
-}
-
-function buildChangeCards(changes: {
-  day1: number | null
-  day7: number | null
-  day30: number | null
-}) {
-  return [
-    { label: "1D", value: changes.day1 },
-    { label: "7D", value: changes.day7 },
-    { label: "30D", value: changes.day30 },
-  ].map((item) => {
-    if (item.value === null) {
-      return {
-        label: item.label,
-        value: "--",
-        className: "text-muted-foreground border-border/50",
-        icon: null,
-      }
-    }
-
-    const isPositive = item.value >= 0
-    const Icon = isPositive ? ArrowUpRightIcon : ArrowDownRightIcon
-    const className = isPositive
-      ? "text-emerald-400 border-emerald-400/40"
-      : "text-destructive border-destructive/40"
-
-    return {
-      label: item.label,
-      value: formatPercent(item.value),
-      className,
-      icon: <Icon className="size-3.5" />,
-    }
-  })
 }

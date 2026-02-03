@@ -193,41 +193,4 @@
   }
 }
 
-@keyframes chart-zoom-in {
-  from {
-    transform: scale(1.008);
-    opacity: 0.88;
-  }
-  to {
-    transform: scale(1);
-    opacity: 1;
-  }
-}
 
-@keyframes chart-zoom-out {
-  from {
-    transform: scale(0.992);
-    opacity: 0.88;
-  }
-  to {
-    transform: scale(1);
-    opacity: 1;
-  }
-}
-
-.chart-zoom-in {
-  animation: chart-zoom-in 360ms ease-out;
-  transform-origin: center;
-}
-
-.chart-zoom-out {
-  animation: chart-zoom-out 360ms ease-out;
-  transform-origin: center;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .chart-zoom-in,
-  .chart-zoom-out {
-    animation: none;
-  }
-}
